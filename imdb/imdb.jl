@@ -2,11 +2,11 @@
 # Also see https://github.com/fchollet/keras/raw/master/examples/imdb_lstm.py
 # Also see https://github.com/ilkarman/DeepLearningFrameworks/raw/master/common/utils.py
 
-for p in ("PyCall","JSON","JLD","WordTokenizers")
+for p in ("PyCall","JSON","JLD","WordTokenizers","Knet")
     Pkg.installed(p) == nothing && Pkg.add(p)
 end
 
-using PyCall,JSON,JLD
+using PyCall,JSON,JLD,Knet,WordTokenizers
 
 """
 
@@ -97,13 +97,17 @@ function imdb(;
 end
 
 function loadmodel(url="ai.ku.edu.tr/models/model_imdb.jld",localfile="model_imdb.jld")
-    !isfile(localfile) && download(url,localfile)
+    if !isfile(localfile)
+        info("Downloading $url")
+        download(url,localfile)
+    end
+    info("Loading model")
     d = load(localfile)
     weights = d["weights"];rnnSpec=d["rnnSpec"];
     return weights,rnnSpec
 end
 
-function predict(weights, inputs, rnnSpec;train=false)
+function predict(weights, inputs, rnnSpec)
     rnnWeights, inputMatrix, outputMatrix = weights # (1,1,W), (X,V), (2,H)
     indices = hcat(inputs...)' # (B,T)
     rnnInput = inputMatrix[:,indices] # (X,B,T)
@@ -117,3 +121,29 @@ function invert(vocab)
        return int2tok
 end
 
+function reviewstring(x,y=0)
+    x = x[x.!=MAXFEATURES] # remove pads
+    """$(("Sample","Negative","Positive")[y+1]) review:\n$(join(imdbarray[x]," "))"""
+end
+
+function predictstring(x)
+    y = predict(weights, [x], rnnSpec)
+    c = indmax(Array(y))
+    ("Negative","Positive")[c]
+end
+
+BATCHSIZE=64
+SEED=1311194
+MAXLEN=150 #maximum size of the word sequence
+MAXFEATURES=30000 #vocabulary size
+PAD=MAXFEATURES
+SOS=MAXFEATURES-1
+UNK=MAXFEATURES-2
+atype = gpu()<0 ? Array{Float32}:KnetArray{Float32}
+(xtrn,ytrn,xtst,ytst,imdbdict)=imdb(maxlen=MAXLEN,maxval=MAXFEATURES,seed=SEED)
+imdbarray = invert(imdbdict)
+imdbarray[MAXFEATURES-2:MAXFEATURES] = ["<unk>","<s>","<pad>"]
+weights,rnnSpec = loadmodel()
+if !(typeof(first(weights)) <: atype)
+    weights= map(atype,weights)
+end
