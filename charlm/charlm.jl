@@ -1,3 +1,7 @@
+for p in ("JLD","Knet")
+    Pkg.installed(p) == nothing && Pkg.add(p)
+end
+
 using JLD,Knet
 
 info("Loading Shakespeare data")
