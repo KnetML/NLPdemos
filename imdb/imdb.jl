@@ -96,3 +96,24 @@ function imdb(;
     return xtrn,ytrn,xtst,ytst,_imdb_dict
 end
 
+function loadmodel(url="ai.ku.edu.tr/models/model_imdb.jld",localfile="model_imdb.jld")
+    !isfile(localfile) && download(url,localfile)
+    d = load(localfile)
+    weights = d["weights"];rnnSpec=d["rnnSpec"];
+    return weights,rnnSpec
+end
+
+function predict(weights, inputs, rnnSpec;train=false)
+    rnnWeights, inputMatrix, outputMatrix = weights # (1,1,W), (X,V), (2,H)
+    indices = hcat(inputs...)' # (B,T)
+    rnnInput = inputMatrix[:,indices] # (X,B,T)
+    rnnOutput = rnnforw(rnnSpec, rnnWeights, rnnInput)[1] # (H,B,T)
+    return outputMatrix * rnnOutput[:,:,end] # (2,H) * (H,B) = (2,B)
+end
+
+function invert(vocab)
+       int2tok = Array{String}(length(vocab))
+       for (k,v) in vocab; int2tok[v] = k; end
+       return int2tok
+end
+
