@@ -1,5 +1,7 @@
 *~
 foo*
+.ipynb_checkpoints
+*.npz
 *.jl.cov
 *.jl.*.cov
 *.jl.mem
