@@ -1,5 +1,9 @@
-for p in ("JLD","Knet")
-    Pkg.installed(p) == nothing && Pkg.add(p)
+if ENV["HOME"] == "/mnt/juliabox"
+    Pkg.dir(path...)=joinpath("/home/jrun/.julia/v0.6",path...)
+else
+    for p in ("JLD","Knet")
+        Pkg.installed(p) == nothing && Pkg.add(p)
+    end
 end
 
 using JLD,Knet
@@ -27,6 +31,13 @@ end
 info("Loading Julia model")
 isfile("juliacharlm.jld") || download("http://people.csail.mit.edu/deniz/models/nlp-demos/juliacharlm.jld","juliacharlm.jld")
 julia_model = load("juliacharlm.jld","model")
+
+# Use the gpu if available
+if gpu() >= 0
+    info("Loading models to GPU")
+    shake_model = map(x->(isa(x,Array{Float32}) ? ka(x) : x), shake_model)
+    julia_model = map(x->(isa(x,Array{Float32}) ? ka(x) : x), julia_model)    
+end
 
 # Given the current character, predict the next character
 function predict(ws,xs,hx,cx;pdrop=0)
