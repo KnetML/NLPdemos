@@ -2,11 +2,11 @@
 # Also see https://github.com/fchollet/keras/raw/master/examples/imdb_lstm.py
 # Also see https://github.com/ilkarman/DeepLearningFrameworks/raw/master/common/utils.py
 
-for p in ("PyCall","JSON","JLD","WordTokenizers","Knet")
+for p in ("PyCall","JSON","JLD","Knet")
     Pkg.installed(p) == nothing && Pkg.add(p)
 end
 
-using PyCall,JSON,JLD,Knet,WordTokenizers
+using PyCall,JSON,JLD,Knet
 
 """
 
