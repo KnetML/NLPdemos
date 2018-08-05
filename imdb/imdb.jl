@@ -2,8 +2,12 @@
 # Also see https://github.com/fchollet/keras/raw/master/examples/imdb_lstm.py
 # Also see https://github.com/ilkarman/DeepLearningFrameworks/raw/master/common/utils.py
 
-for p in ("PyCall","JSON","JLD","Knet")
-    Pkg.installed(p) == nothing && Pkg.add(p)
+if ENV["HOME"] == "/mnt/juliabox"
+    Pkg.dir(path...)=joinpath("/home/jrun/.julia/v0.6",path...)
+else
+    for p in ("PyCall","JSON","JLD","Knet")
+        Pkg.installed(p) == nothing && Pkg.add(p)
+    end
 end
 
 using PyCall,JSON,JLD,Knet
@@ -31,7 +35,7 @@ function imdb(;
               dir = "./",
               data="imdb.npz",
               dict="imdb_word_index.json",
-              jld="imdb.jld",
+              jld="imdbdata.jld",
               maxval=nothing,
               maxlen=nothing,
               seed=0, oov=true, stoken=true, pad=true
@@ -96,7 +100,7 @@ function imdb(;
     return xtrn,ytrn,xtst,ytst,_imdb_dict
 end
 
-function loadmodel(url="ai.ku.edu.tr/models/model_imdb.jld",localfile="model_imdb.jld")
+function loadmodel(url="http://people.csail.mit.edu/deniz/models/nlp-demos/imdbmodel.jld",localfile="imdbmodel.jld")
     if !isfile(localfile)
         info("Downloading $url")
         download(url,localfile)
@@ -139,11 +143,8 @@ MAXFEATURES=30000 #vocabulary size
 PAD=MAXFEATURES
 SOS=MAXFEATURES-1
 UNK=MAXFEATURES-2
-atype = gpu()<0 ? Array{Float32}:KnetArray{Float32}
 (xtrn,ytrn,xtst,ytst,imdbdict)=imdb(maxlen=MAXLEN,maxval=MAXFEATURES,seed=SEED)
 imdbarray = invert(imdbdict)
 imdbarray[MAXFEATURES-2:MAXFEATURES] = ["<unk>","<s>","<pad>"]
 weights,rnnSpec = loadmodel()
-if !(typeof(first(weights)) <: atype)
-    weights= map(atype,weights)
-end
+nothing
