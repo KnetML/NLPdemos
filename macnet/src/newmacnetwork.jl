@@ -640,9 +640,15 @@ function visualize(img,results;p=12)
     s_y,s_x = size(img)./14
     for k=1:p
         α = results["w_attn_$(k)"][:]
-        println("step_$(k) most attn. wrds: ",i2w[question[sortperm(α;rev=true)[1:2]]])
+        top3    = sortperm(α;rev=true)[1:3]
+        wattns  = map(x->@sprintf("%.2f%%",x),α[top3]*100)
+        wrds    = i2w[question[top3]]
+        print_with_color(:yellow,"Top-3 Attended Words:\n";bold = true)
+        println(join(zip(wrds,wattns),"\n"))
         flush(STDOUT)
-        display([RGB{N0f8}(α[i],α[i],α[i]) for i=1:length(α)]);
+        # display([RGB{N0f8}(α[i],α[i],α[i]) for i=1:length(α)]);
+        print_with_color(:blue,"Image Attention Map: ";bold = true)
+        flush(STDOUT)
         hsvimg = convert.(HSV,img);
         attn = results["KB_attn_$(k)"]
         for i=1:14,j=1:14
