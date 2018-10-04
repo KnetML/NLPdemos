@@ -1,16 +1,12 @@
+# This is a copy of Knet/data/imdb.jl and Knet/tutorial/07.imdb.ipynb cleaned up
+
 # Based on https://github.com/fchollet/keras/raw/master/keras/datasets/imdb.py
 # Also see https://github.com/fchollet/keras/raw/master/examples/imdb_lstm.py
 # Also see https://github.com/ilkarman/DeepLearningFrameworks/raw/master/common/utils.py
 
-if ENV["HOME"] == "/mnt/juliabox"
-    Pkg.dir(path...)=joinpath("/home/jrun/.julia/v0.6",path...)
-else
-    for p in ("PyCall","JSON","JLD","Knet")
-        Pkg.installed(p) == nothing && Pkg.add(p)
-    end
-end
-
-using PyCall,JSON,JLD,Knet
+using Pkg; for p in ("PyCall","JSON","JLD2"); haskey(Pkg.installed(),p) || Pkg.add(p); end
+using PyCall,JSON,JLD2,Random
+@pyimport numpy as np
 
 """
 
@@ -32,39 +28,38 @@ https://keras.io/datasets and return (xtrn,ytrn,xtst,ytst,dict) tuple.
 """
 function imdb(;
               url = "https://s3.amazonaws.com/text-datasets",
-              dir = "./",
+              dir = "./", # joinpath(@__DIR__, "imdb"),
               data="imdb.npz",
               dict="imdb_word_index.json",
-              jld="imdbdata.jld",
+              jld2="imdb.jld2",
               maxval=nothing,
               maxlen=nothing,
               seed=0, oov=true, stoken=true, pad=true
               )
     global _imdb_xtrn,_imdb_ytrn,_imdb_xtst,_imdb_ytst,_imdb_dict
-    if !isdefined(:_imdb_xtrn)
+    if !(@isdefined _imdb_xtrn)
         isdir(dir) || mkpath(dir)
-        jldpath = joinpath(dir,jld)
-        if !isfile(jldpath)
-            info("Downloading IMDB...")
+        jld2path = joinpath(dir,jld2)
+        if !isfile(jld2path)
+            @info("Downloading IMDB...")
             datapath = joinpath(dir,data)
             dictpath = joinpath(dir,dict)
             isfile(datapath) || download("$url/$data",datapath)
             isfile(dictpath) || download("$url/$dict",dictpath)
-            @pyimport numpy as np
             d = np.load(datapath)
             _imdb_xtrn = map(a->np.asarray(a,dtype=np.int32), get(d, "x_train"))
             _imdb_ytrn = Array{Int8}(get(d, "y_train") .+ 1)
             _imdb_xtst = map(a->np.asarray(a,dtype=np.int32), get(d, "x_test"))
             _imdb_ytst = Array{Int8}(get(d, "y_test") .+ 1)
             _imdb_dict = Dict{String,Int32}(JSON.parsefile(dictpath))
-            JLD.@save jldpath _imdb_xtrn _imdb_ytrn _imdb_xtst _imdb_ytst _imdb_dict
+            JLD2.@save jld2path _imdb_xtrn _imdb_ytrn _imdb_xtst _imdb_ytst _imdb_dict
             #rm(datapath)
             #rm(dictpath)
         end
-        info("Loading IMDB...")
-        JLD.@load jldpath _imdb_xtrn _imdb_ytrn _imdb_xtst _imdb_ytst _imdb_dict
+        @info("Loading IMDB...")
+        JLD2.@load jld2path _imdb_xtrn _imdb_ytrn _imdb_xtst _imdb_ytst _imdb_dict
     end
-    if seed != 0; srand(seed); end
+    if seed != 0; Random.seed!(seed); end
     xs = [_imdb_xtrn;_imdb_xtst]
     if maxlen == nothing; maxlen = maximum(map(length,xs)); end
     if maxval == nothing; maxval = maximum(map(maximum,xs)) + pad + stoken; end
@@ -89,7 +84,7 @@ function imdb(;
                 xi = xi[end-maxlen+1:end]
             end
             if pad && length(xi) < maxlen
-                xi = append!(repmat([pad_token], maxlen-length(xi)), xi)
+                xi = append!(repeat([pad_token], maxlen-length(xi)), xi)
             end
             newx[i] = xi
         end
@@ -100,51 +95,118 @@ function imdb(;
     return xtrn,ytrn,xtst,ytst,_imdb_dict
 end
 
-function loadmodel(url="http://people.csail.mit.edu/deniz/models/nlp-demos/imdbmodel.jld",localfile="imdbmodel.jld")
-    if !isfile(localfile)
-        info("Downloading $url")
-        download(url,localfile)
-    end
-    info("Loading model")
-    d = load(localfile)
-    weights = d["weights"];rnnSpec=d["rnnSpec"];
-    return weights,rnnSpec
+### From 07.imdb.ipynb
+
+using Pkg
+for p in ("Knet",) #"ProgressMeter")
+    haskey(Pkg.installed(),p) || Pkg.add(p)
 end
 
-function predict(weights, inputs, rnnSpec)
-    rnnWeights, inputMatrix, outputMatrix = weights # (1,1,W), (X,V), (2,H)
-    indices = hcat(inputs...)' # (B,T)
-    rnnInput = inputMatrix[:,indices] # (X,B,T)
-    rnnOutput = rnnforw(rnnSpec, rnnWeights, rnnInput)[1] # (H,B,T)
-    return outputMatrix * rnnOutput[:,:,end] # (2,H) * (H,B) = (2,B)
-end
+EPOCHS=3          # Number of training epochs
+BATCHSIZE=64      # Number of instances in a minibatch
+EMBEDSIZE=125     # Word embedding size
+NUMHIDDEN=100     # Hidden layer size
+MAXLEN=150        # maximum size of the word sequence, pad shorter sequences, truncate longer ones
+VOCABSIZE=30000   # maximum vocabulary size, keep the most frequent 30K, map the rest to UNK token
+NUMCLASS=2        # number of output classes
+DROPOUT=0.0       # Dropout rate
+LR=0.001          # Learning rate
+BETA_1=0.9        # Adam optimization parameter
+BETA_2=0.999      # Adam optimization parameter
+EPS=1e-08         # Adam optimization parameter
 
-function invert(vocab)
-       int2tok = Array{String}(length(vocab))
-       for (k,v) in vocab; int2tok[v] = k; end
-       return int2tok
-end
+using Knet # : Knet
+#ENV["COLUMNS"]=92                     # column width for array printing
+#include(Knet.dir("data","imdb.jl"))   # defines imdb loader
 
+#@doc imdb
+
+#@time 
+(xtrn,ytrn,xtst,ytst,imdbdict)=imdb(maxlen=MAXLEN,maxval=VOCABSIZE);
+
+#summary.((xtrn,ytrn,xtst,ytst,imdbdict))
+
+# Words are encoded with integers
+#rand(xtrn)'
+
+# Each word sequence is padded or truncated to length 150
+#length.(xtrn)'
+
+# Define a function that can print the actual words:
+imdbvocab = Array{String}(undef,length(imdbdict))
+for (k,v) in imdbdict; imdbvocab[v]=k; end
+imdbvocab[VOCABSIZE-2:VOCABSIZE] = ["<unk>","<s>","<pad>"]
 function reviewstring(x,y=0)
-    x = x[x.!=MAXFEATURES] # remove pads
-    """$(("Sample","Negative","Positive")[y+1]) review:\n$(join(imdbarray[x]," "))"""
+    x = x[x.!=VOCABSIZE] # remove pads
+    """$(("Sample","Negative","Positive")[y+1]) review:\n$(join(imdbvocab[x]," "))"""
 end
 
-function predictstring(x)
-    y = predict(weights, [x], rnnSpec)
-    c = indmax(Array(y))
-    ("Negative","Positive")[c]
+# Hit Ctrl-Enter to see random reviews:
+#r = rand(1:length(xtrn))
+#println(reviewstring(xtrn[r],ytrn[r]))
+
+# Here are the labels: 1=negative, 2=positive
+#ytrn'
+
+using Knet: param, dropout, RNN
+
+struct SequenceClassifier; input; rnn; output; end
+
+SequenceClassifier(input::Int, embed::Int, hidden::Int, output::Int) =
+    SequenceClassifier(param(embed,input), RNN(embed,hidden,rnnType=:gru), param(output,hidden))
+
+function (sc::SequenceClassifier)(input; pdrop=0)
+    embed = sc.input[:, permutedims(hcat(input...))]
+    embed = dropout(embed,pdrop)
+    hidden = sc.rnn(embed)
+    hidden = dropout(hidden,pdrop)
+    return sc.output * hidden[:,:,end]
 end
 
-BATCHSIZE=64
-SEED=1311194
-MAXLEN=150 #maximum size of the word sequence
-MAXFEATURES=30000 #vocabulary size
-PAD=MAXFEATURES
-SOS=MAXFEATURES-1
-UNK=MAXFEATURES-2
-(xtrn,ytrn,xtst,ytst,imdbdict)=imdb(maxlen=MAXLEN,maxval=MAXFEATURES,seed=SEED)
-imdbarray = invert(imdbdict)
-imdbarray[MAXFEATURES-2:MAXFEATURES] = ["<unk>","<s>","<pad>"]
-weights,rnnSpec = loadmodel()
-nothing
+using Knet: minibatch
+dtrn = minibatch(xtrn,ytrn,BATCHSIZE;shuffle=true)
+dtst = minibatch(xtst,ytst,BATCHSIZE)
+#length.((dtrn,dtst))
+
+# For running experiments
+#using Knet: train!, Adam
+#import ProgressMeter
+
+function trainresults(file,model)
+    # if (print("Train from scratch? ");readline()[1]=='y')
+    #     updates = 0; prog = ProgressMeter.Progress(EPOCHS * length(dtrn))
+    #     function callback(J)
+    #         ProgressMeter.update!(prog, updates)
+    #         return (updates += 1) <= prog.n
+    #     end
+    #     opt = Adam(lr=LR, beta1=BETA_1, beta2=BETA_2, eps=EPS)
+    #     train!(model, dtrn; callback=callback, optimizer=opt, pdrop=DROPOUT)
+    #     Knet.gc()
+    #     Knet.save(file,"model",model)
+    # else
+        isfile(file) || download("http://people.csail.mit.edu/deniz/models/tutorial/$file",file)
+        model = Knet.load(file,"model")
+    # end
+    return model
+end
+
+#using Knet: nll, accuracy
+model = SequenceClassifier(VOCABSIZE,EMBEDSIZE,NUMHIDDEN,NUMCLASS)
+#nll(model,dtrn), nll(model,dtst), accuracy(model,dtrn), accuracy(model,dtst)
+
+model = trainresults("imdbmodel.jld2",model);
+
+# 33s (0.059155148f0, 0.3877507f0, 0.9846153846153847, 0.8583733974358975)
+#nll(model,dtrn), nll(model,dtst), accuracy(model,dtrn), accuracy(model,dtst)
+
+predictstring(x)="\nPrediction: " * ("Negative","Positive")[argmax(Array(vec(model([x]))))]
+UNK = VOCABSIZE-2
+str2ids(s::String)=[(i=get(imdbdict,w,UNK); i>=UNK ? UNK : i) for w in split(lowercase(s))]
+
+# Here we can see predictions for random reviews from the test set; hit Ctrl-Enter to sample:
+# r = rand(1:length(xtst))
+# println(reviewstring(xtst[r],ytst[r]))
+# println(predictstring(xtst[r]))
+
+# Here the user can enter their own reviews and classify them:
+# println(predictstring(str2ids(readline(stdin))))
