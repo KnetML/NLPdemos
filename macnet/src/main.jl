@@ -236,13 +236,18 @@ function visualize(img,results;p=12)
     s_y,s_x = size(img)./14
     for k=1:p
         α = results["w_attn_$(k)"][:]
-        top3    = sortperm(α;rev=true)[1:3]
-        wattns  = map(x->@sprintf("%.2f%%",x),α[top3]*100)
-        wrds    = i2w[question[top3]]
+        
+        #top3    = sortperm(α;rev=true)[1:3]
+        #wattns  = map(x->@sprintf("%.2f%%",x),α[top3]*100)
+        wrds    = i2w[question]
+        p = bar(wrds,α;legend=false,xrotation=70)
+        savefig(p,"plots/$(k).png")
+        display(load("plots/$(k).png"))
+   
         #printstyled("Top-3 Attended Words:\n";bold = true,color = :yellow)
-        print("Top-3 Attended Words:\n")
-        println(join(zip(wrds,wattns),"\n"))
-        flush(stdout)
+        #print("Top-3 Attended Words:\n")
+        #println(join(zip(wrds,wattns),"\n"))
+        #flush(stdout)
         # display([RGB{N0f8}(α[i],α[i],α[i]) for i=1:length(α)]);
         #printsyled("Image Attention Map: ";bold = true, color = :blue)
         println("Image Attention Map: ")
