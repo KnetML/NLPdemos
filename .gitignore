@@ -10,3 +10,4 @@ data/
 deps/deps.jl
 *.jld
 *.json
+*.jld2

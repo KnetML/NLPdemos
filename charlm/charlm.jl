@@ -1,63 +1,74 @@
-if ENV["HOME"] == "/mnt/juliabox"
-    Pkg.dir(path...)=joinpath("/home/jrun/.julia/v0.6",path...)
-else
-    for p in ("JLD","Knet")
-        Pkg.installed(p) == nothing && Pkg.add(p)
-    end
+using Pkg; for p in ("Knet",); haskey(Pkg.installed(),p) || Pkg.add(p); end
+
+using Knet
+
+struct CharLM; input; rnn; output; end
+
+CharLM(vocab::Int,input::Int,hidden::Int; o...) =
+    CharLM(Embed(vocab,input), RNN(input,hidden; o...), Linear(hidden,vocab))
+
+function (c::CharLM)(x; pdrop=0, hidden=nothing)
+    x = c.input(x)                # (B,T)->(X,B,T)
+    x = dropout(x, pdrop)
+    x = c.rnn(x, hidden=hidden)   # (H,B,T)
+    x = dropout(x, pdrop)
+    x = reshape(x, size(x,1), :)  # (H,B*T)
+    return c.output(x)            # (V,B*T)
 end
 
-using JLD,Knet
+struct Embed; w; end
 
-info("Loading Shakespeare data")
-include(Knet.dir("data","gutenberg.jl"))
-trn,tst,chars = shakespeare()
-shake_text = String(chars[vcat(trn,tst)])
+Embed(vocab::Int,embed::Int)=Embed(param(embed,vocab))
 
-info("Loading Shakespeare model")
-isfile("shakespeare.jld") || download("http://people.csail.mit.edu/deniz/models/nlp-demos/shakespeare.jld","shakespeare.jld")
-shake_model = load("shakespeare.jld","model")
+(e::Embed)(x) = e.w[:,x]
 
-info("Reading Julia files")
-base = joinpath(Base.JULIA_HOME, Base.DATAROOTDIR, "julia", "base")
-julia_text = ""
-for (root,dirs,files) in walkdir(base)
-    for f in files
-        f[end-2:end] == ".jl" || continue
-        julia_text *= readstring(joinpath(root,f))
-    end
-    # println((root,length(files),all(f->contains(f,".jl"),files)))
-end
+struct Linear; w; b; end
 
-info("Loading Julia model")
-isfile("juliacharlm.jld") || download("http://people.csail.mit.edu/deniz/models/nlp-demos/juliacharlm.jld","juliacharlm.jld")
-julia_model = load("juliacharlm.jld","model")
+Linear(input::Int, output::Int)=Linear(param(output,input), param0(output))
 
-# Given the current character, predict the next character
-function predict(ws,xs,hx,cx;pdrop=0)
-    r,wr,wx,wy,by = ws
-    x = wx[:,xs]                                    # xs=(B,T) x=(X,B,T)
-    x = dropout(x,pdrop)
-    y,hy,cy = rnnforw(r,wr,x,hx,cx,hy=true,cy=true) # y=(H,B,T) hy=cy=(H,B,L)
-    y = dropout(y,pdrop)
-    y2 = reshape(y,size(y,1),size(y,2)*size(y,3))   # y2=(H,B*T)
-    return wy*y2.+by, hy, cy
-end
+(l::Linear)(x) = l.w * x .+ l.b
 
 # Sample from trained model
-function generate(model,n)
+
+function generate(model,chars,n)
     function sample(y)
-        p,r=Array(exp.(y-logsumexp(y))),rand()
+        p = Array(exp.(y)); r = rand()*sum(p)
         for j=1:length(p); (r -= p[j]) < 0 && return j; end
     end
-    h,c = nothing,nothing
-    chars = model[end]
-    x = findfirst(chars,'\n')
+    x = 1
+    h = []
     for i=1:n
-        y,h,c = predict(model,[x],h,c)
+        y = model([x], hidden=h)
         x = sample(y)
         print(chars[x])
     end
     println()
 end
+
+@info("Loading Shakespeare data")
+include(Knet.dir("data","gutenberg.jl"))
+trn,tst,shake_chars1 = shakespeare()
+shake_text = String(shake_chars1[vcat(trn,tst)])
+
+@info("Loading Shakespeare model")
+isfile("shakespeare.jld2") || download("http://people.csail.mit.edu/deniz/models/tutorial/shakespeare.jld2","shakespeare.jld2")
+shake_model, shake_chars = Knet.load("shakespeare.jld2","model","chars")
+
+@info("Reading Julia files")
+base = joinpath(Sys.BINDIR, Base.DATAROOTDIR, "julia")
+julia_text = ""
+for (root,dirs,files) in walkdir(base)
+    for f in files
+        global julia_text
+        f[end-2:end] == ".jl" || continue
+        julia_text *= read(joinpath(root,f),String)
+    end
+    # println((root,length(files),all(f->contains(f,".jl"),files)))
+end
+
+@info("Loading Julia model")
+isfile("juliacharlm.jld2") || download("http://people.csail.mit.edu/deniz/models/tutorial/juliacharlm.jld2","juliacharlm.jld2")
+julia_model, julia_chars = Knet.load("juliacharlm.jld2","model","chars")
+
 
 nothing
