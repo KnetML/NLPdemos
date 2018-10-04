@@ -1,8 +1,7 @@
-using Pkg; Pkg.activate("../")
 #This implementation is very similar to original implementation in https://github.com/stanfordnlp/mac-network
 using JSON,Knet,Images,HDF5
 #import AutoGrad: cat1d
-using Printf,Random,Tqdm
+using Printf,Random
 include("model.jl")
 savemodel(filename,m,mrun,o) = Knet.save(filename,"m",m,"mrun",mrun,"o",o)
 
@@ -136,7 +135,7 @@ function modelrun(M,data,feats,o,Mrun=nothing;train=false)
     Rparams   = Mrun !== nothing ? params(Mrun) : nothing
     # results   = similar(Array{Float32},200704*48) #uncomment for INPLACE
     println("Timer Starts");
-    for i in tqdm(1:L)
+    for i in 1:L
         ids,questions,answers,batchSizes,pad,families = data[i]
         B    = batchSizes[1]
         xB   = atype(ones(Float32,1,B))
