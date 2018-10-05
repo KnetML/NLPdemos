@@ -1,5 +1,5 @@
 #This implementation is very similar to original implementation in https://github.com/stanfordnlp/mac-network
-using JSON,Knet,Images,HDF5
+using JSON,Knet,Images,HDF5,Plots
 #import AutoGrad: cat1d
 using Printf,Random
 include("model.jl")
@@ -240,9 +240,10 @@ function visualize(img,results;p=12)
         #top3    = sortperm(α;rev=true)[1:3]
         #wattns  = map(x->@sprintf("%.2f%%",x),α[top3]*100)
         wrds    = i2w[question]
-        p = bar(wrds,α;legend=false,xrotation=70)
+        p = bar(α;xticks=(collect(1:length(wrds)),wrds),xrotation=90,bar_width = 1,xtickfont = font(8, "Courier"))
+        
         savefig(p,"plots/$(k).png")
-        display(load("plots/$(k).png"))
+        display(RGB.(load("plots/$(k).png")))
    
         #printstyled("Top-3 Attended Words:\n";bold = true,color = :yellow)
         #print("Top-3 Attended Words:\n")
