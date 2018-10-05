@@ -240,7 +240,7 @@ function visualize(img,results;p=12)
         #top3    = sortperm(α;rev=true)[1:3]
         #wattns  = map(x->@sprintf("%.2f%%",x),α[top3]*100)
         wrds    = i2w[question]
-        p = bar(α;xticks=(collect(1:length(wrds)),wrds),xrotation=90,bar_width = 1,xtickfont = font(8, "Courier"))
+        p = bar(α;xticks=(collect(1:length(wrds)),wrds),xrotation=90,bar_width = 1,xtickfont = font(8, "Courier"),yticks=0:.1:(maximum(α)+.1),legend=false,size=(600,100+400*(maximum(α))),aspect_ratio=10)
         
         savefig(p,"plots/$(k).png")
         display(RGB.(load("plots/$(k).png")))
@@ -265,5 +265,5 @@ function visualize(img,results;p=12)
 end
 
 function scalepixel(pixel,scaler)
-     return HSV(pixel.h,pixel.s,pixel.v+2*scaler)
+     return HSV(pixel.h,pixel.s,min(1.0,pixel.v+5*scaler))
 end
