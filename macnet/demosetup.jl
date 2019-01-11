@@ -1,3 +1,4 @@
+using ImageMagick # This has to come first, see https://github.com/JuliaIO/ImageMagick.jl/issues/140
 server="ai.ku.edu.tr/"
 if !isdir("data/demo")
     println("Downloading sample questions and images from CLEVR dataset...")
