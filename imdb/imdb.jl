@@ -6,7 +6,7 @@
 
 using Pkg; for p in ("PyCall","JSON","JLD2"); haskey(Pkg.installed(),p) || Pkg.add(p); end
 using PyCall,JSON,JLD2,Random
-@pyimport numpy as np
+np = pyimport("numpy")
 
 """
 
@@ -150,16 +150,16 @@ end
 
 using Knet: param, dropout, RNN
 
-struct SequenceClassifier; input; rnn; output; end
+struct SequenceClassifier; input; rnn; output; pdrop; end
 
-SequenceClassifier(input::Int, embed::Int, hidden::Int, output::Int) =
-    SequenceClassifier(param(embed,input), RNN(embed,hidden,rnnType=:gru), param(output,hidden))
+SequenceClassifier(input::Int, embed::Int, hidden::Int, output::Int; pdrop=0) =
+    SequenceClassifier(param(embed,input), RNN(embed,hidden,rnnType=:gru), param(output,hidden), pdrop)
 
-function (sc::SequenceClassifier)(input; pdrop=0)
+function (sc::SequenceClassifier)(input)
     embed = sc.input[:, permutedims(hcat(input...))]
-    embed = dropout(embed,pdrop)
+    embed = dropout(embed,sc.pdrop)
     hidden = sc.rnn(embed)
-    hidden = dropout(hidden,pdrop)
+    hidden = dropout(hidden,sc.pdrop)
     return sc.output * hidden[:,:,end]
 end
 
@@ -194,7 +194,7 @@ end
 model = SequenceClassifier(VOCABSIZE,EMBEDSIZE,NUMHIDDEN,NUMCLASS)
 #nll(model,dtrn), nll(model,dtst), accuracy(model,dtrn), accuracy(model,dtst)
 
-model = trainresults("imdbmodel.jld2",model);
+model = trainresults("imdbmodel113.jld2",model);
 
 # 33s (0.059155148f0, 0.3877507f0, 0.9846153846153847, 0.8583733974358975)
 #nll(model,dtrn), nll(model,dtst), accuracy(model,dtrn), accuracy(model,dtst)
